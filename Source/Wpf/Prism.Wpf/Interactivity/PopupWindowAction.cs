@@ -45,6 +45,16 @@ namespace Prism.Interactivity
                 new PropertyMetadata(null));
 
         /// <summary>
+        /// If set, applies this WindowStartupLocation to the child window.
+        /// </summary>
+        public static readonly DependencyProperty WindowStartupLocationProperty =
+            DependencyProperty.Register(
+                "WindowStartupLocation",
+                typeof(WindowStartupLocation?),
+                typeof(PopupWindowAction),
+                new PropertyMetadata(null));
+
+        /// <summary>
         /// If set, applies this Style to the child window.
         /// </summary>
         public static readonly DependencyProperty WindowStyleProperty =
@@ -79,6 +89,15 @@ namespace Prism.Interactivity
         {
             get { return (bool)GetValue(CenterOverAssociatedObjectProperty); }
             set { SetValue(CenterOverAssociatedObjectProperty, value); }
+        }
+
+        /// <summary>
+        /// Gets or sets the startup location of the Window.
+        /// </summary>
+        public WindowStartupLocation? WindowStartupLocation
+        {
+            get { return (WindowStartupLocation?)GetValue(WindowStartupLocationProperty); }
+            set { SetValue(WindowStartupLocationProperty, value); }
         }
 
         /// <summary>
@@ -133,10 +152,29 @@ namespace Prism.Interactivity
                         wrapperWindow.SizeChanged -= sizeHandler;
 
                         FrameworkElement view = this.AssociatedObject;
-                        Point position = view.PointToScreen(new Point(0, 0));
+                        
+                        // Position is the top left position of the view from which the request was initiated.
+                        // On multiple monitors, if the X or Y coordinate is negative it represent that the monitor from which
+                        // the request was initiated is either on the left or above the PrimaryScreen
 
-                        wrapperWindow.Top = position.Y + ((view.ActualHeight - wrapperWindow.ActualHeight) / 2);
-                        wrapperWindow.Left = position.X + ((view.ActualWidth - wrapperWindow.ActualWidth) / 2);
+                        Point position = view.PointToScreen(new Point(0, 0));
+                        PresentationSource source = PresentationSource.FromVisual(view);
+                        position = source.CompositionTarget.TransformFromDevice.Transform(position);
+
+                        // Find the middle of the calling view.
+                        // Take the width and height of the view divided by 2 and add to the X and Y coordinates.
+
+                        var middleOfView = new Point(position.X + (view.ActualWidth / 2),
+                                                     position.Y + (view.ActualHeight / 2));
+
+                        // Set the coordinates for the top left part of the wrapperWindow.
+                        // Take the width of the wrapperWindow, divide it by 2 and substract it from 
+                        // the X coordinate of middleOfView. Do the same thing for the Y coordinate.
+                        // If the wrapper window is wider or taller than the view, it will be behind the view.
+
+                        wrapperWindow.Left = middleOfView.X - (wrapperWindow.ActualWidth / 2);
+                        wrapperWindow.Top = middleOfView.Y - (wrapperWindow.ActualHeight / 2);
+                       
                     };
                 wrapperWindow.SizeChanged += sizeHandler;
             }
@@ -178,11 +216,15 @@ namespace Prism.Interactivity
                 wrapperWindow = this.CreateDefaultWindow(notification);
             }
 
+            wrapperWindow.Owner = Window.GetWindow(this);
+
             // If the user provided a Style for a Window we set it as the window's style.
-            if (this.WindowStyle != null && this.WindowStyle.TargetType == typeof(Window))
-            {
-                wrapperWindow.Style = this.WindowStyle;
-            }
+            if (WindowStyle != null)
+                wrapperWindow.Style = WindowStyle;
+
+            // If the user has provided a startup location for a Window we set it as the window's startup location.
+            if (WindowStartupLocation.HasValue)
+                wrapperWindow.WindowStartupLocation = WindowStartupLocation.Value;
 
             return wrapperWindow;
         }
